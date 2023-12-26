@@ -15,6 +15,6 @@ int main() {
     std::vector<glm::vec3> framebuffer;
     framebuffer.resize(width * height);
 
-    stbi_write_png("out.png", width, height, 3, framebuffer.data(), 1920 * sizeof(glm::vec3));
+    stbi_write_png("out.png", width, height, 3, framebuffer.data(), width * sizeof(glm::vec3));
     return 0;
 }
