@@ -7,7 +7,8 @@
 #include <optional>
 #include <iostream>
 
-#include "glm/glm.hpp"
+#include <svogen.h>
+#include <glm/common.hpp>
 
 #define TINYOBJLOADER_IMPLEMENTATION
 #include "tiny_obj_loader.h"
@@ -66,10 +67,7 @@ int main() {
     auto *pc = voxelize_mesh("suzanne.obj", glm::vec3(1.f / resolution), (1.f / resolution) / 8);
     if (!pc) return 1;
 
-    struct PointCloudFileHeader {
-        glm::vec3 min_coords, max_coords;
-        uint32_t n_points;
-    } header = {
+    PointCloudFileHeader header = {
             glm::vec3(std::numeric_limits<float>::max()),
             glm::vec3(std::numeric_limits<float>::min()),
             (uint32_t) pc->nvertices
