@@ -62,21 +62,6 @@ vx_point_cloud_t *voxelize_mesh(const char *mesh_filename, glm::vec3 resolution,
     return pc;
 }
 
-struct SvoFileHeader {
-    glm::vec3 min_coords, max_coords;
-    uint32_t n_subdiv;
-    uint32_t n_nodes;
-};
-
-struct SvoNode {
-    bool is_filled : 1;
-    uint8_t sign_x : 1;
-    uint8_t sign_y : 1;
-    uint8_t sign_z : 1;
-    int32_t prev_sibling_offset, next_sibling_offset;
-    int32_t first_child_offset;
-};
-
 bool point_in_aabb_exists(const vx_point_cloud_t *pc, glm::vec3 minc, glm::vec3 maxc) {
     for (int i = 0; i < pc->nvertices; i++) {
         glm::vec3 vert(pc->vertices[i].x, pc->vertices[i].y, pc->vertices[i].z);
