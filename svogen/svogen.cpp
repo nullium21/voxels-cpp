@@ -15,6 +15,7 @@
 
 #define VOXELIZER_IMPLEMENTATION
 #include "voxelizer.h"
+#include "glm/gtx/string_cast.hpp"
 
 struct ObjData {
     tinyobj::attrib_t attrib;
@@ -61,9 +62,104 @@ vx_point_cloud_t *voxelize_mesh(const char *mesh_filename, glm::vec3 resolution,
     return pc;
 }
 
+struct SvoFileHeader {
+    glm::vec3 min_coords, max_coords;
+    uint32_t n_subdiv;
+    uint32_t n_nodes;
+};
+
+struct SvoNode {
+    bool is_filled : 1;
+    uint8_t sign_x : 1;
+    uint8_t sign_y : 1;
+    uint8_t sign_z : 1;
+    int32_t prev_sibling_offset, next_sibling_offset;
+    int32_t first_child_offset;
+};
+
+bool point_in_aabb_exists(const vx_point_cloud_t *pc, glm::vec3 minc, glm::vec3 maxc) {
+    for (int i = 0; i < pc->nvertices; i++) {
+        glm::vec3 vert(pc->vertices[i].x, pc->vertices[i].y, pc->vertices[i].z);
+        if (glm::all(glm::greaterThanEqual(vert, minc)) && glm::all(glm::lessThanEqual(vert, maxc)))
+            return true;
+    }
+
+    return false;
+}
+
+void create_svo_children(const vx_point_cloud_t *pc, uint self_index, std::vector<SvoNode> &nodes, glm::vec3 minc, glm::vec3 maxc, uint max_sd, uint subdiv) {
+    constexpr glm::bvec3 subdivisions[] = {
+            { 0, 0, 0 },
+            { 1, 0, 0 }, { 0, 1, 0 }, { 0, 0, 1 },
+            { 1, 1, 0 }, { 1, 0, 1 }, { 0, 1, 1 },
+            { 1, 1, 1 }
+    };
+
+    glm::vec3 sz = maxc - minc;
+    glm::vec3 sh = sz / 2.f;
+    glm::vec3 c = minc + sh;
+
+    std::printf("Processing subtree %s..%s (subdivision %d/%d)...\n", glm::to_string(minc).data(), glm::to_string(maxc).data(), subdiv, max_sd);
+
+    if (subdiv >= max_sd || !nodes[self_index].is_filled) return;
+
+    uint32_t last_index = 0;
+#pragma unroll
+    for (glm::bvec3 sd_b : subdivisions) {
+        glm::vec3 sd(sd_b);
+        glm::vec3 sd_minc = c - sd*sh, sd_maxc = maxc - sd*sh;
+
+        uint index = nodes.size();
+        SvoNode &node = nodes.emplace_back(SvoNode {
+                point_in_aabb_exists(pc, sd_minc, sd_maxc),
+                sd_b.x, sd_b.y, sd_b.z,
+                last_index ? ((int32_t) index) - ((int32_t) last_index) : 0,
+                0,
+                0
+        });
+
+        if (!nodes[self_index].first_child_offset)
+            nodes[self_index].first_child_offset = ((int32_t) index) - (int32_t) self_index;
+
+        if (last_index) nodes[last_index].next_sibling_offset = ((int32_t) index) - ((int32_t) last_index);
+
+        create_svo_children(pc, index, nodes, sd_minc, sd_maxc, max_sd, subdiv + 1);
+        last_index = index;
+    }
+}
+
+uint calc_n_subdiv(uint8_t n_subdiv_frac, const glm::vec3 &min_coords, const glm::vec3 &max_coords) {
+    glm::vec3 size = max_coords - min_coords;
+    float side_length = std::max(size.x, std::max(size.y, size.z));
+    uint side_length_p2 = std::bit_ceil((uint) std::ceil(side_length));
+    uint n_subdiv = std::log2(side_length_p2) + n_subdiv_frac;
+    return n_subdiv;
+}
+
+std::pair<glm::vec3, glm::vec3> calc_pc_aabb(const vx_point_cloud_t *pc) {
+    glm::vec3 min_coords(INFINITY), max_coords(-INFINITY);
+    for (int i = 0; i < pc->nvertices; i++) {
+        vx_vertex_t &vert = pc->vertices[i];
+        glm::vec3 v(vert.x, vert.y, vert.z);
+        min_coords = glm::min(min_coords, v);
+        max_coords = glm::max(max_coords, v);
+    }
+    return {min_coords, max_coords};
+}
+
+void create_svo(const vx_point_cloud_t *pc, std::vector<SvoNode> &nodes, glm::vec3 min_coords, glm::vec3 max_coords, uint n_subdiv) {
+    SvoNode &root = nodes.emplace_back(SvoNode {
+        pc->nvertices > 0,
+        0, 0, 0,
+        0, 0, 0
+    });
+
+    create_svo_children(pc, 0, nodes, min_coords, max_coords, n_subdiv, 0);
+}
+
 int main() {
-    constexpr uint8_t n_subdiv = 3;
-    constexpr float resolution = 1.f / (1 << n_subdiv);
+    constexpr uint8_t n_subdiv_frac = 3;
+    constexpr float resolution = 1.f / (1 << n_subdiv_frac);
 
     auto *pc = voxelize_mesh("suzanne.obj", glm::vec3(resolution), resolution / 8);
     if (!pc) return 1;
@@ -72,7 +168,7 @@ int main() {
             glm::vec3(std::numeric_limits<float>::max()),
             glm::vec3(std::numeric_limits<float>::min()),
             (uint32_t) pc->nvertices,
-            n_subdiv
+            n_subdiv_frac
     };
 
     for (int i = 0; i < pc->nvertices; i++) {
@@ -86,7 +182,26 @@ int main() {
     fwrite(pc->vertices, sizeof(vx_vertex_t), pc->nvertices, fp);
     fclose(fp);
 
+    auto [min_coords, max_coords] = calc_pc_aabb(pc);
+    uint n_subdiv = calc_n_subdiv(n_subdiv_frac, min_coords, max_coords);
+
+    std::vector<SvoNode> nodes;
+    create_svo(pc, nodes, min_coords, max_coords, n_subdiv);
+
     vx_point_cloud_free(pc);
+
+    std::printf("Created %zu nodes\n", nodes.size());
+
+    SvoFileHeader svo_header {
+        min_coords, max_coords,
+        n_subdiv,
+        (uint32_t) nodes.size()
+    };
+
+    FILE *fp_svo = fopen("suzanne-svo.bin", "wb");
+    fwrite(&svo_header, sizeof(SvoFileHeader), 1, fp_svo);
+    fwrite(nodes.data(), sizeof(SvoNode), nodes.size(), fp_svo);
+    fclose(fp_svo);
 
     return 0;
 }
