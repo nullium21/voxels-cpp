@@ -12,6 +12,8 @@ struct Float3 { float x, y, z; } [[format("f3_format")]];
 struct Data {
   Float3 min, max;
   u32 n_points;
+  u8 n_subdiv;
+  u8 _pad0[3] [[hidden]];
   Float3 points[n_points];
 };
 

@@ -62,15 +62,17 @@ vx_point_cloud_t *voxelize_mesh(const char *mesh_filename, glm::vec3 resolution,
 }
 
 int main() {
-    constexpr float resolution = 8;
+    constexpr uint8_t n_subdiv = 3;
+    constexpr float resolution = 1.f / (1 << n_subdiv);
 
-    auto *pc = voxelize_mesh("suzanne.obj", glm::vec3(1.f / resolution), (1.f / resolution) / 8);
+    auto *pc = voxelize_mesh("suzanne.obj", glm::vec3(resolution), resolution / 8);
     if (!pc) return 1;
 
     PointCloudFileHeader header = {
             glm::vec3(std::numeric_limits<float>::max()),
             glm::vec3(std::numeric_limits<float>::min()),
-            (uint32_t) pc->nvertices
+            (uint32_t) pc->nvertices,
+            n_subdiv
     };
 
     for (int i = 0; i < pc->nvertices; i++) {
