@@ -169,6 +169,10 @@ int main() {
 
     auto [min_coords, max_coords] = calc_pc_aabb(pc);
     uint n_subdiv = calc_n_subdiv(n_subdiv_frac, min_coords, max_coords);
+    uint side_length = 1 << (n_subdiv - n_subdiv_frac);
+
+    min_coords = glm::vec3(-((float) side_length) / 2.f);
+    max_coords = glm::vec3( ((float) side_length) / 2.f);
 
     std::vector<SvoNode> nodes;
     create_svo(pc, nodes, min_coords, max_coords, n_subdiv);

@@ -16,7 +16,7 @@ struct PointCloudFileHeader {
 using PointCloudVertex = glm::vec3;
 
 struct SvoFileHeader {
-    glm::vec3 min_coords, max_coords;
+    glm::ivec3 min_coords, max_coords;
     uint32_t n_subdiv;
     uint32_t n_nodes;
 };
