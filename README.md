@@ -2,6 +2,15 @@
 
 This project is a simple voxel raytracer written in C++23 for educational purposes.
 
+## Running
+
+To run the renderer (`voxels` CMake target), there needs to be a `suzanne-svo.bin` file in the current working directory.
+That contains the Sparse Voxel Octree used for raytracing relatively fast; without the file it will just segfault.
+
+To create the `suzanne-svo.bin`, you have to run `svogen` with a `suzanne.obj` in the current working directory; the program will create `suzanne-points.bin` with the point cloud data, and `suzanne-svo.bin` with the octree.
+
+Both file formats are documented in ImHex patterns: [`points.pat` for `*-points.bin`](./svogen/points.pat) and [`svo.pat` for `*-svo.bin`](./svogen/svo.pat).
+
 ## Used Code
 
 This project uses some open-source libraries under permissive licenses to help:
