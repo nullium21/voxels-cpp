@@ -73,16 +73,14 @@ bool point_in_aabb_exists(const vx_point_cloud_t *pc, glm::vec3 minc, glm::vec3 
 }
 
 void create_svo_children(const vx_point_cloud_t *pc, uint self_index, std::vector<SvoNode> &nodes, glm::vec3 minc, glm::vec3 maxc, uint max_sd, uint subdiv) {
-    constexpr glm::bvec3 subdivisions[] = {
-            { 0, 0, 0 },
-            { 1, 0, 0 }, { 0, 1, 0 }, { 0, 0, 1 },
-            { 1, 1, 0 }, { 1, 0, 1 }, { 0, 1, 1 },
-            { 1, 1, 1 }
+    constexpr glm::ivec3 mults[] = {
+            { 1, 1, 1 }, { -1, -1, -1 },
+            { -1, 1, 1 }, { 1, -1, 1 }, { 1, 1, -1 },
+            { -1, -1, 1 }, { -1, 1, -1 }, { 1, -1, -1 }
     };
 
-    glm::vec3 sz = maxc - minc;
-    glm::vec3 sh = sz / 2.f;
-    glm::vec3 c = minc + sh;
+    glm::vec3 center = (maxc + minc) / 2.f;
+    glm::vec3 sub_half_size = (maxc - minc) / 4.f;
 
     std::printf("Processing subtree %s..%s (subdivision %d/%d)...\n", glm::to_string(minc).data(), glm::to_string(maxc).data(), subdiv, max_sd);
 
@@ -90,17 +88,18 @@ void create_svo_children(const vx_point_cloud_t *pc, uint self_index, std::vecto
 
     uint32_t last_index = 0;
 #pragma unroll
-    for (glm::bvec3 sd_b : subdivisions) {
-        glm::vec3 sd(sd_b);
-        glm::vec3 sd_minc = c - sd*sh, sd_maxc = maxc - sd*sh;
+    for (glm::vec3 sub_mult : mults) {
+        glm::vec3 sub_center = center + (sub_half_size / 2.f * sub_mult);
+
+        glm::vec3 sub_min = sub_center - sub_half_size;
+        glm::vec3 sub_max = sub_center + sub_half_size;
 
         uint index = nodes.size();
         SvoNode &node = nodes.emplace_back(SvoNode {
-                point_in_aabb_exists(pc, sd_minc, sd_maxc),
-                sd_b.x, sd_b.y, sd_b.z,
+                point_in_aabb_exists(pc, sub_min, sub_max),
+                signbit(sub_mult.x), signbit(sub_mult.y), signbit(sub_mult.z),
                 last_index ? ((int32_t) index) - ((int32_t) last_index) : 0,
-                0,
-                0
+                0, 0
         });
 
         if (!nodes[self_index].first_child_offset)
@@ -108,7 +107,7 @@ void create_svo_children(const vx_point_cloud_t *pc, uint self_index, std::vecto
 
         if (last_index) nodes[last_index].next_sibling_offset = ((int32_t) index) - ((int32_t) last_index);
 
-        create_svo_children(pc, index, nodes, sd_minc, sd_maxc, max_sd, subdiv + 1);
+        create_svo_children(pc, index, nodes, sub_min, sub_max, max_sd, subdiv + 1);
         last_index = index;
     }
 }
